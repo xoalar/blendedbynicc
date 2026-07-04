@@ -12,27 +12,33 @@ exports.handler = async (event) => {
   const { name, phone, date, slot, dateKey, service, price, notes } = body;
   if (!name || !phone || !date || !slot) return { statusCode: 400, body: JSON.stringify({ error: 'Missing fields' }) };
 
-  // Save booking to Blobs
   try {
     const store = getStore('blendedbynicc');
-    const raw = await store.get('bookedSlots').catch(() => null);
+    const raw = await Promise.race([
+      store.get('bookedSlots'),
+      new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 3000))
+    ]).catch(() => null);
     const bookedSlots = raw ? JSON.parse(raw) : {};
     if (!bookedSlots[dateKey]) bookedSlots[dateKey] = [];
     if (!bookedSlots[dateKey].includes(slot)) bookedSlots[dateKey].push(slot);
-    await store.set('bookedSlots', JSON.stringify(bookedSlots));
+    await Promise.race([
+      store.set('bookedSlots', JSON.stringify(bookedSlots)),
+      new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 3000))
+    ]).catch(() => null);
   } catch(err) { console.error('Blob save error:', err); }
 
-  // SMS
-  const confirmationMsg = `✂️ Booking Confirmed — Blended by Nicc\n\nHey ${name}! You're all set.\n\n📅 ${date}\n🕐 ${slot}\n💈 ${service||'Haircut'} — ${price||'$35'}\n${notes?'📝 Notes: '+notes+'\n':''}\nNeed to cancel? DM @blendedbynicc on Instagram at least 2 hours before to avoid the $5 no-show fee.\n\nReply STOP to opt out.`;
-  const nickAlertMsg = `📲 New Booking — Blended by Nicc\n\nName: ${name}\nPhone: ${phone}\nDate: ${date}\nTime: ${slot}\nService: ${service||'Haircut'} — ${price||'$35'}\n${notes?'Notes: '+notes:''}`;
-
-  try {
-    await sendSMS(phone, confirmationMsg);
-    if (NICK_PHONE) await sendSMS(NICK_PHONE, nickAlertMsg);
-  } catch(err) { console.error('SMS error:', err); }
+  sendSMSAsync(phone, name, date, slot, service, price, notes).catch(e => console.error('SMS error:', e));
 
   return { statusCode: 200, body: JSON.stringify({ success: true }) };
 };
+
+async function sendSMSAsync(phone, name, date, slot, service, price, notes) {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE) return;
+  const confirmationMsg = `✂️ Booking Confirmed — Blended by Nicc\n\nHey ${name}! You're all set.\n\n📅 ${date}\n🕐 ${slot}\n💈 ${service||'Haircut'} — ${price||'$35'}\n${notes?'📝 Notes: '+notes+'\n':''}\nNeed to cancel? DM @blendedbynicc on Instagram at least 2 hours before to avoid the $5 no-show fee.\n\nReply STOP to opt out.`;
+  const nickAlertMsg = `📲 New Booking — Blended by Nicc\n\nName: ${name}\nPhone: ${phone}\nDate: ${date}\nTime: ${slot}\nService: ${service||'Haircut'} — ${price||'$35'}\n${notes?'Notes: '+notes:''}`;
+  await sendSMS(phone, confirmationMsg);
+  if (NICK_PHONE) await sendSMS(NICK_PHONE, nickAlertMsg);
+}
 
 async function sendSMS(to, body) {
   const credentials = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');

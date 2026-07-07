@@ -320,6 +320,12 @@
   .blocked-item-reason{font-size:0.68rem;color:var(--muted);margin-top:2px;}
   .blocked-remove{background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem;padding:0 0.25rem;line-height:1;}
   .blocked-remove:hover{color:#ff6060;}
+  .cancel-date-row{display:flex;gap:0.4rem;margin-bottom:0.5rem;}
+  .booking-cancel-item{background:rgba(255,255,255,0.03);border:1px solid var(--border);padding:0.85rem 1rem;margin-bottom:0.5rem;display:flex;justify-content:space-between;align-items:center;}
+  .booking-cancel-info{font-family:'Space Mono',monospace;font-size:0.72rem;color:var(--cream);}
+  .booking-cancel-sub{font-size:0.68rem;color:var(--muted);margin-top:3px;}
+  .btn-free-up{background:rgba(185,64,64,0.15);border:1px solid rgba(185,64,64,0.4);color:#f08080;padding:0.4rem 0.75rem;font-family:'Space Mono',monospace;font-size:0.65rem;letter-spacing:0.08em;cursor:pointer;transition:all 0.2s;}
+  .btn-free-up:hover{background:rgba(185,64,64,0.3);color:#ff9090;}
   .admin-save{width:100%;border:none;padding:0.85rem;font-family:'Space Grotesk',sans-serif;font-size:0.95rem;font-weight:600;cursor:pointer;margin-top:1.25rem;background:linear-gradient(135deg,var(--gold),var(--rose));color:var(--bg);transition:filter 0.2s;}
   .admin-save:hover{filter:brightness(1.1);}
   .admin-saved{text-align:center;font-family:'Space Mono',monospace;font-size:0.68rem;color:var(--lavender);margin-top:0.65rem;opacity:0;transition:opacity 0.3s;}
@@ -608,8 +614,9 @@
     <!-- TABS -->
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('hours')">🕐 Hours</button>
-      <button class="admin-tab" onclick="switchTab('slots')">🗓 Time Slots</button>
-      <button class="admin-tab" onclick="switchTab('blocked')">🚫 Block Dates</button>
+      <button class="admin-tab" onclick="switchTab('slots')">🗓 Slots</button>
+      <button class="admin-tab" onclick="switchTab('blocked')">🚫 Block</button>
+      <button class="admin-tab" onclick="switchTab('cancellations')">❌ Cancel</button>
     </div>
 
     <!-- TAB: HOURS -->
@@ -644,6 +651,17 @@
         <button class="admin-save" style="margin-top:0;padding:0.4rem 0.9rem;font-size:0.8rem;" onclick="addBlockedDate()">+ Add</button>
       </div>
       <div id="blocked-dates-list" style="margin-top:1rem;"></div>
+    </div>
+
+    <!-- TAB: CANCELLATIONS -->
+    <div class="admin-tab-content" id="tab-cancellations" style="display:none;">
+      <div class="admin-note">View all upcoming bookings. Click "Free Up" on any slot to cancel it and make it available again for customers.</div>
+      <div class="cancel-date-row">
+        <input class="hinput" type="date" id="cancel-date-input" style="flex:1;" onchange="loadBookingsForDate()">
+      </div>
+      <div id="cancellations-list" style="margin-top:1rem;">
+        <div style="color:var(--muted);font-size:0.78rem;text-align:center;padding:1rem 0;">Select a date to see bookings</div>
+      </div>
     </div>
 
     <div class="admin-saved" id="admin-saved">✓ Saved!</div>
@@ -762,14 +780,21 @@ function renderHoursTable() {
 
 // ── ADMIN TABS ──
 function switchTab(tab) {
-  ['hours','slots','blocked'].forEach(t => {
+  ['hours','slots','blocked','cancellations'].forEach(t => {
     document.getElementById('tab-'+t).style.display = t===tab ? 'block' : 'none';
   });
   document.querySelectorAll('.admin-tab').forEach((el,i) => {
-    el.classList.toggle('active', ['hours','slots','blocked'][i] === tab);
+    el.classList.toggle('active', ['hours','slots','blocked','cancellations'][i] === tab);
   });
   if(tab==='slots'){ adminSlotDay=0; document.querySelectorAll('.day-btn').forEach((b,i)=>b.classList.toggle('active',i===0)); buildSlotsToggle(); }
   if(tab==='blocked') renderBlockedList();
+  if(tab==='cancellations') {
+    // Set today's date as default
+    const today = new Date();
+    const ds = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    document.getElementById('cancel-date-input').value = ds;
+    loadBookingsForDate();
+  }
 }
 
 function openAdmin() {
@@ -1046,7 +1071,7 @@ setInterval(async () => {
     blockedDates = data.blockedDates || [];
     if(selDate) renderSlots();
   } catch(e) { /* silent fail */ }
-}, 10000);
+}, 30000);
 
 // ── ADD TO CALENDAR ──
 function addToCalendar(type) {
@@ -1106,6 +1131,55 @@ function addToCalendar(type) {
     a.href=url; a.download='blendedbynicc-appointment.ics'; a.click();
     URL.revokeObjectURL(url);
   }
+}
+
+// ── CANCELLATIONS ──
+async function loadBookingsForDate() {
+  const dateVal = document.getElementById('cancel-date-input').value;
+  const el = document.getElementById('cancellations-list');
+  if(!dateVal){ el.innerHTML='<div style="color:var(--muted);font-size:0.78rem;text-align:center;padding:1rem 0;">Select a date to see bookings</div>'; return; }
+
+  el.innerHTML='<div style="color:var(--muted);font-size:0.78rem;text-align:center;padding:1rem 0;">Loading...</div>';
+
+  try {
+    const res = await fetch(`/.netlify/functions/get-bookings-for-date?date=${dateVal}`);
+    const data = await res.json();
+
+    if(!data.bookings || data.bookings.length === 0){
+      el.innerHTML='<div style="color:var(--muted);font-size:0.78rem;text-align:center;padding:1rem 0;">No bookings for this date.</div>';
+      return;
+    }
+
+    el.innerHTML = data.bookings.map(b => `
+      <div class="booking-cancel-item">
+        <div>
+          <div class="booking-cancel-info">🕐 ${b.slot} — ${b.name}</div>
+          <div class="booking-cancel-sub">${b.service || 'Haircut'} · ${b.phone}${b.notes ? ' · '+b.notes : ''}</div>
+        </div>
+        <button class="btn-free-up" onclick="cancelBooking(${b.id}, '${dateVal}', '${b.slot}')">Free Up</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    el.innerHTML='<div style="color:var(--red);font-size:0.78rem;text-align:center;padding:1rem 0;">Error loading bookings.</div>';
+  }
+}
+
+async function cancelBooking(id, dateKey, slot) {
+  if(!confirm(`Free up ${slot} on ${dateKey}? This will make it available for new bookings.`)) return;
+  try {
+    const res = await fetch('/.netlify/functions/cancel-booking', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({id, password: adminPass})
+    });
+    if(res.ok){
+      // Update local bookedSlots
+      if(bookedSlots[dateKey]) bookedSlots[dateKey] = bookedSlots[dateKey].filter(s=>s!==slot);
+      loadBookingsForDate();
+      if(selDate === dateKey) renderSlots();
+      flashSaved();
+    } else { alert('Failed to cancel booking.'); }
+  } catch(e) { alert('Error cancelling booking.'); }
 }
 
 // ── INIT ──

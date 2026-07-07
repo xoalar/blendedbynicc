@@ -745,7 +745,7 @@ const ADMIN_PASS_LOCAL = 'blendedbynicc2025';
 // ── LOAD ALL SETTINGS FROM SERVER ──
 async function loadSettings() {
   try {
-    const res  = await fetch('/.netlify/functions/get-settings');
+    const res  = await fetch('/.netlify/functions/get-settings?t='+Date.now());
     const data = await res.json();
     shopHours    = data.shopHours    || DEFAULT_HOURS;
     perDaySlots  = data.perDaySlots  || DEFAULT_PER_DAY;
@@ -1173,9 +1173,11 @@ async function cancelBooking(id, dateKey, slot) {
       body: JSON.stringify({id, password: 'blendedbynicc2025'})
     });
     if(res.ok){
+      // Remove from local cache immediately
       if(bookedSlots[dateKey]) bookedSlots[dateKey] = bookedSlots[dateKey].filter(s=>s!==slot);
+      // Reload fresh from server to confirm deletion stuck
+      await loadSettings();
       loadBookingsForDate();
-      if(selDate === dateKey) renderSlots();
       flashSaved();
     } else { alert('Failed to cancel booking.'); }
   } catch(e) { alert('Error cancelling booking.'); }

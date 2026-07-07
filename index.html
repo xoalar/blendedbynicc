@@ -1010,6 +1010,13 @@ async function submitBooking(){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name,phone:rawPhone,date:dateStr,slot:selSlot,dateKey:selDate,service:svc.name,price:svc.price,notes})
+  }).then(async () => {
+    // After server confirms, reload fresh data so all devices see updated slots
+    try {
+      const res  = await fetch('/.netlify/functions/get-settings');
+      const data = await res.json();
+      bookedSlots = data.bookedSlots || {};
+    } catch(e) {}
   }).catch(()=>{});
 
   // Show confirmation immediately
@@ -1026,8 +1033,20 @@ function closeModal(){
   ['inp-name','inp-phone','inp-notes'].forEach(id=>document.getElementById(id).value='');
   const btn=document.getElementById('btn-book');
   btn.disabled=true; btn.textContent='Confirm Booking & Send SMS';
-  renderCal(); renderSlots(); updateSummary();
+  // Reload from server so booked slots are fresh for everyone
+  loadSettings();
 }
+
+// Auto-refresh booked slots every 30 seconds
+setInterval(async () => {
+  try {
+    const res  = await fetch('/.netlify/functions/get-settings');
+    const data = await res.json();
+    bookedSlots  = data.bookedSlots  || {};
+    blockedDates = data.blockedDates || [];
+    if(selDate) renderSlots();
+  } catch(e) { /* silent fail */ }
+}, 30000);
 
 // ── ADD TO CALENDAR ──
 function addToCalendar(type) {

@@ -26,7 +26,6 @@ exports.handler = async () => {
     });
 
     const rows = await res.json();
-
     const bookedSlots = {};
     if (Array.isArray(rows)) {
       rows.forEach(row => {

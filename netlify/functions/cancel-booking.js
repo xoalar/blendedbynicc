@@ -19,12 +19,18 @@ exports.handler = async (event) => {
       headers: {
         'apikey': SUPABASE_KEY,
         'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Prefer': 'return=minimal'
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
       }
     });
+    
+    const text = await res.text();
+    console.log('Supabase delete response:', res.status, text);
+    
     if (res.ok) return { statusCode: 200, body: JSON.stringify({ success: true }) };
-    return { statusCode: 500, body: JSON.stringify({ error: 'Delete failed' }) };
+    return { statusCode: 500, body: JSON.stringify({ error: 'Delete failed', details: text }) };
   } catch(err) {
+    console.error('Cancel error:', err);
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
 };

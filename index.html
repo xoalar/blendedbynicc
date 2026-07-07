@@ -1170,10 +1170,9 @@ async function cancelBooking(id, dateKey, slot) {
     const res = await fetch('/.netlify/functions/cancel-booking', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({id, password: adminPass})
+      body: JSON.stringify({id, password: 'blendedbynicc2025'})
     });
     if(res.ok){
-      // Update local bookedSlots
       if(bookedSlots[dateKey]) bookedSlots[dateKey] = bookedSlots[dateKey].filter(s=>s!==slot);
       loadBookingsForDate();
       if(selDate === dateKey) renderSlots();

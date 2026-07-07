@@ -18,32 +18,39 @@ const DEFAULT_PER_DAY = {0:MON_THU,1:MON_THU,2:MON_THU,3:MON_THU,4:FRIDAY,5:SATU
 
 exports.handler = async () => {
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/bookings?select=date_key,slot`, {
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`
-      }
-    });
+    const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
 
-    const rows = await res.json();
+    const [bookingsRes, settingsRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/bookings?select=date_key,slot`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/settings?select=key,value`, { headers }),
+    ]);
+
+    const rows     = await bookingsRes.json();
+    const settings = await settingsRes.json();
+
+    // Build bookedSlots
     const bookedSlots = {};
     if (Array.isArray(rows)) {
       rows.forEach(row => {
         if (!bookedSlots[row.date_key]) bookedSlots[row.date_key] = [];
-        if (!bookedSlots[row.date_key].includes(row.slot)) {
-          bookedSlots[row.date_key].push(row.slot);
-        }
+        if (!bookedSlots[row.date_key].includes(row.slot)) bookedSlots[row.date_key].push(row.slot);
       });
+    }
+
+    // Parse settings
+    const settingsMap = {};
+    if (Array.isArray(settings)) {
+      settings.forEach(s => { try { settingsMap[s.key] = JSON.parse(s.value); } catch(e) {} });
     }
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        shopHours: DEFAULT_HOURS,
-        perDaySlots: DEFAULT_PER_DAY,
+        shopHours:    settingsMap.shopHours    || DEFAULT_HOURS,
+        perDaySlots:  settingsMap.perDaySlots  || DEFAULT_PER_DAY,
         bookedSlots,
-        blockedDates: [],
+        blockedDates: settingsMap.blockedDates || [],
       }),
     };
   } catch(err) {

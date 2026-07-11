@@ -304,6 +304,10 @@
   .admin-tab:last-child{border-right:none;}
   .admin-tab:hover{color:var(--cream);background:rgba(255,255,255,0.03);}
   .admin-tab.active{background:rgba(212,168,67,0.1);color:var(--gold);}
+  .slot-mode-toggle{display:flex;gap:4px;margin-bottom:1rem;}
+  .slot-mode-btn{flex:1;padding:0.55rem 0.5rem;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Space Mono',monospace;font-size:0.62rem;letter-spacing:0.06em;cursor:pointer;transition:all 0.15s;text-transform:uppercase;}
+  .slot-mode-btn:hover{border-color:var(--lavender);color:var(--lavender);}
+  .slot-mode-btn.active{background:rgba(212,168,67,0.12);border-color:var(--gold);color:var(--gold);}
   .day-selector{display:flex;gap:4px;margin-bottom:1rem;flex-wrap:wrap;}
   .day-btn{flex:1;min-width:40px;padding:0.5rem 0.25rem;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Space Mono',monospace;font-size:0.65rem;letter-spacing:0.06em;cursor:pointer;transition:all 0.15s;text-transform:uppercase;}
   .day-btn:hover{border-color:var(--lavender);color:var(--lavender);}
@@ -628,18 +632,40 @@
 
     <!-- TAB: TIME SLOTS -->
     <div class="admin-tab-content" id="tab-slots" style="display:none;">
-      <div class="admin-note">Select a day, then check which time slots are available for that day. Each day can have its own schedule.</div>
-      <div class="day-selector" id="day-selector">
-        <button class="day-btn active" onclick="selectSlotDay(0)">Mon</button>
-        <button class="day-btn" onclick="selectSlotDay(1)">Tue</button>
-        <button class="day-btn" onclick="selectSlotDay(2)">Wed</button>
-        <button class="day-btn" onclick="selectSlotDay(3)">Thu</button>
-        <button class="day-btn" onclick="selectSlotDay(4)">Fri</button>
-        <button class="day-btn" onclick="selectSlotDay(5)">Sat</button>
-        <button class="day-btn" onclick="selectSlotDay(6)">Sun</button>
+      <div class="admin-note">Switch between setting slots by <strong style="color:var(--gold)">Day of Week</strong> (default schedule) or by a <strong style="color:var(--lavender)">Specific Date</strong> (override for that day only).</div>
+      
+      <!-- Mode toggle -->
+      <div class="slot-mode-toggle">
+        <button class="slot-mode-btn active" id="mode-btn-week" onclick="setSlotMode('week')">📅 By Day of Week</button>
+        <button class="slot-mode-btn" id="mode-btn-date" onclick="setSlotMode('date')">🗓 Specific Date</button>
       </div>
-      <div class="slots-toggle-grid" id="slots-toggle-grid"></div>
-      <button class="admin-save" onclick="saveSlots()">Save Slots</button>
+
+      <!-- Week mode -->
+      <div id="slot-mode-week">
+        <div class="day-selector" id="day-selector">
+          <button class="day-btn active" onclick="selectSlotDay(0)">Mon</button>
+          <button class="day-btn" onclick="selectSlotDay(1)">Tue</button>
+          <button class="day-btn" onclick="selectSlotDay(2)">Wed</button>
+          <button class="day-btn" onclick="selectSlotDay(3)">Thu</button>
+          <button class="day-btn" onclick="selectSlotDay(4)">Fri</button>
+          <button class="day-btn" onclick="selectSlotDay(5)">Sat</button>
+          <button class="day-btn" onclick="selectSlotDay(6)">Sun</button>
+        </div>
+        <div class="slots-toggle-grid" id="slots-toggle-grid"></div>
+        <button class="admin-save" onclick="saveSlots()">Save Week Slots</button>
+      </div>
+
+      <!-- Date override mode -->
+      <div id="slot-mode-date" style="display:none;">
+        <div class="admin-note" style="margin-bottom:0.75rem;border-left-color:var(--lavender);">Pick a specific date to set custom slots just for that day. This overrides the weekly default.</div>
+        <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.75rem;">
+          <input class="hinput" type="date" id="slot-date-override-input" style="flex:1;" onchange="loadDateOverrideSlots()">
+          <button class="admin-save" style="margin-top:0;padding:0.4rem 0.9rem;font-size:0.8rem;white-space:nowrap;" onclick="clearDateOverride()">Clear Override</button>
+        </div>
+        <div id="slot-date-override-label" style="font-family:'Space Mono',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:0.75rem;"></div>
+        <div class="slots-toggle-grid" id="slots-toggle-grid-date"></div>
+        <button class="admin-save" id="save-date-slots-btn" onclick="saveDateOverrideSlots()" style="display:none;">Save Slots for This Date</button>
+      </div>
     </div>
 
     <!-- TAB: BLOCK DATES -->
@@ -735,6 +761,7 @@ const DEFAULT_PER_DAY = {0:MON_THU,1:MON_THU,2:MON_THU,3:MON_THU,4:FRIDAY,5:SATU
 // ── LIVE STATE (loaded from server) ──
 let shopHours    = DEFAULT_HOURS;
 let perDaySlots  = DEFAULT_PER_DAY;
+let perDateSlots = {}; // { "2026-07-10": ["9:00 AM", "10:00 AM"] } — date-specific overrides
 let bookedSlots  = {};
 let blockedDates = [];
 let adminSlotDay = 0;
@@ -749,6 +776,7 @@ async function loadSettings() {
     const data = await res.json();
     shopHours    = data.shopHours    || DEFAULT_HOURS;
     perDaySlots  = data.perDaySlots  || DEFAULT_PER_DAY;
+    perDateSlots = data.perDateSlots || {};
     bookedSlots  = data.bookedSlots  || {};
     blockedDates = data.blockedDates || [];
   } catch(e) {
@@ -844,7 +872,83 @@ async function saveHours() {
   } catch(e) { alert('Failed to save hours. Check your connection.'); }
 }
 
-// ── SLOTS EDITOR (per day) ──
+// ── SLOT MODE (week vs specific date) ──
+let currentSlotMode = 'week';
+function setSlotMode(mode) {
+  currentSlotMode = mode;
+  document.getElementById('slot-mode-week').style.display = mode === 'week' ? 'block' : 'none';
+  document.getElementById('slot-mode-date').style.display = mode === 'date' ? 'block' : 'none';
+  document.getElementById('mode-btn-week').classList.toggle('active', mode === 'week');
+  document.getElementById('mode-btn-date').classList.toggle('active', mode === 'date');
+  if(mode === 'date') {
+    // Set today as default date
+    const today = new Date();
+    const ds = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    document.getElementById('slot-date-override-input').value = ds;
+    loadDateOverrideSlots();
+  }
+}
+
+function loadDateOverrideSlots() {
+  const dateVal = document.getElementById('slot-date-override-input').value;
+  if(!dateVal) return;
+
+  const parts = dateVal.split('-');
+  const d = new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));
+  const label = d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  document.getElementById('slot-date-override-label').textContent = `Editing slots for: ${label}`;
+  document.getElementById('save-date-slots-btn').style.display = 'block';
+
+  // Check if there's already an override for this date, otherwise use week default
+  const dayIdx = (d.getDay()+6)%7;
+  const existingOverride = perDateSlots[dateVal];
+  const currentSlots = existingOverride !== undefined ? existingOverride : (perDaySlots[dayIdx] || []);
+
+  document.getElementById('slots-toggle-grid-date').innerHTML = ALL_SLOTS.map(slot => {
+    const on = currentSlots.includes(slot);
+    const id = 'dstrow-'+slot.replace(/[: ]/g,'-');
+    return `<label class="slot-toggle-row${on?' on':''}" id="${id}">
+      <input type="checkbox" ${on?'checked':''} onchange="toggleDateSlot('${slot}',this,'${dateVal}')"> ${slot}
+    </label>`;
+  }).join('');
+}
+
+function toggleDateSlot(slot, cb, dateVal) {
+  if(!perDateSlots[dateVal]) {
+    // Initialize from week default
+    const parts = dateVal.split('-');
+    const d = new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));
+    const dayIdx = (d.getDay()+6)%7;
+    perDateSlots[dateVal] = [...(perDaySlots[dayIdx] || [])];
+  }
+  if(cb.checked){ if(!perDateSlots[dateVal].includes(slot)) perDateSlots[dateVal].push(slot); }
+  else { perDateSlots[dateVal] = perDateSlots[dateVal].filter(s=>s!==slot); }
+  const id = 'dstrow-'+slot.replace(/[: ]/g,'-');
+  document.getElementById(id).classList.toggle('on', cb.checked);
+}
+
+async function saveDateOverrideSlots() {
+  const dateVal = document.getElementById('slot-date-override-input').value;
+  if(!dateVal) return;
+  try {
+    await saveToServer('perDateSlots', perDateSlots);
+    flashSaved();
+    if(selDate === dateVal) renderSlots();
+  } catch(e) { alert('Failed to save. Check your connection.'); }
+}
+
+async function clearDateOverride() {
+  const dateVal = document.getElementById('slot-date-override-input').value;
+  if(!dateVal) return;
+  if(!confirm('Remove the custom slots for this date? It will go back to the weekly default.')) return;
+  delete perDateSlots[dateVal];
+  try {
+    await saveToServer('perDateSlots', perDateSlots);
+    loadDateOverrideSlots();
+    flashSaved();
+    if(selDate === dateVal) renderSlots();
+  } catch(e) { alert('Failed to clear. Check your connection.'); }
+}
 function selectSlotDay(dayIdx) {
   adminSlotDay = dayIdx;
   document.querySelectorAll('.day-btn').forEach((b,i) => b.classList.toggle('active', i===dayIdx));
@@ -967,8 +1071,9 @@ function renderSlots() {
   const parts = selDate.split('-');
   const dobj  = new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));
   l.textContent = dobj.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-  const dayIdx   = (dobj.getDay()+6)%7;
-  const daySlots = perDaySlots[dayIdx] || [];
+  const dayIdx = (dobj.getDay()+6)%7;
+  // Use date-specific override if it exists, otherwise fall back to weekly default
+  const daySlots = perDateSlots[selDate] !== undefined ? perDateSlots[selDate] : (perDaySlots[dayIdx] || []);
   const booked   = bookedSlots[selDate] || [];
   c.innerHTML='';
   if(!daySlots.length){

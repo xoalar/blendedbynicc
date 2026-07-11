@@ -12,7 +12,7 @@ exports.handler = async (event) => {
   const { password, key, value } = body;
   if (password !== ADMIN_PASS) return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) };
 
-  const allowed = ['shopHours', 'perDaySlots', 'blockedDates'];
+  const allowed = ['shopHours', 'perDaySlots', 'perDateSlots', 'blockedDates'];
   if (!allowed.includes(key)) return { statusCode: 400, body: JSON.stringify({ error: 'Invalid key' }) };
 
   try {

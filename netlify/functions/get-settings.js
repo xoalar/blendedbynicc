@@ -1,6 +1,5 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-
 const DEFAULT_HOURS = [
   {day:'Monday',   open:'9:30 AM', close:'5:30 PM', closed:false},
   {day:'Tuesday',  open:'9:30 AM', close:'5:30 PM', closed:false},
@@ -19,12 +18,10 @@ const DEFAULT_PER_DAY = {0:MON_THU,1:MON_THU,2:MON_THU,3:MON_THU,4:FRIDAY,5:SATU
 exports.handler = async () => {
   try {
     const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
-
     const [bookingsRes, settingsRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/bookings?select=date_key,slot`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/settings?select=key,value`, { headers }),
     ]);
-
     const rows     = await bookingsRes.json();
     const settings = await settingsRes.json();
 
@@ -49,6 +46,7 @@ exports.handler = async () => {
       body: JSON.stringify({
         shopHours:    settingsMap.shopHours    || DEFAULT_HOURS,
         perDaySlots:  settingsMap.perDaySlots  || DEFAULT_PER_DAY,
+        perDateSlots: settingsMap.perDateSlots || {},
         bookedSlots,
         blockedDates: settingsMap.blockedDates || [],
       }),
@@ -59,9 +57,10 @@ exports.handler = async () => {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        shopHours: DEFAULT_HOURS,
-        perDaySlots: DEFAULT_PER_DAY,
-        bookedSlots: {},
+        shopHours:    DEFAULT_HOURS,
+        perDaySlots:  DEFAULT_PER_DAY,
+        perDateSlots: {},
+        bookedSlots:  {},
         blockedDates: [],
       }),
     };
